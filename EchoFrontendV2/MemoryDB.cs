@@ -17,6 +17,7 @@ using SQLitePCL;
 using EchoFrontendV2;
 using System.Diagnostics.Eventing.Reader;
 using EchoFrontendV2.DTO;
+using File = System.IO.File;
 
 namespace TestSQLLite
 {
@@ -200,7 +201,23 @@ namespace TestSQLLite
                 FileId INTEGER,      -- Foreign key to Files.Id
                 FOREIGN KEY (FileId) REFERENCES Files(Id)
             )",
+                @"CREATE TABLE Books (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Title TEXT NOT NULL,
+                Author TEXT,
+                Summary TEXT,
+                Tags TEXT,          -- Comma-separated, e.g., ""philosophy,autonomy""
+                FileId INTEGER,     -- Foreign key to Files.Id
+                FOREIGN KEY (FileId) REFERENCES Files(Id)
+            )",
 
+                @"CREATE TABLE Images (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Name TEXT NOT NULL,
+                Tags TEXT,             -- Comma-separated, e.g., ""robot,cozmo,hardware""
+                Description TEXT,
+                FilePath TEXT NOT NULL -- Relative or absolute file path
+            )",
             @"ALTER TABLE Memories ADD COLUMN Rank REAL;"
             };
 
@@ -579,12 +596,14 @@ namespace TestSQLLite
 
         public async Task<List<MemoryDTO>> SearchMemoriesAsync(string query, int sessionID)
         {
-            if(NoiseCheck.Check(query,10))            
+            if(NoiseCheck.Check(query,10))
+                return new List<MemoryDTO>();
+            else if(NoiseCheck.Check(query, 20) && !NoiseCheck.ContainsSignalWords(query))
                 return new List<MemoryDTO>();
 
 
-            var memoryStyleQuery = await LLMUtilityCalls.RephraseAsMemoryStyle(query,_logger);
-           var filteredTags = Tagging.CombinedTagger.TagMessage(query);
+            var memoryStyleQuery = await LLMUtilityCalls.RephraseAsMemoryStyle(query, _logger);
+            var filteredTags = Tagging.CombinedTagger.TagMessage(query);
             //var embedder = new OllamaEmbedder();
             float[] queryEmbedding = await EmbeddedSystem.GetEmbeddingAsync(memoryStyleQuery);
 
@@ -600,7 +619,7 @@ namespace TestSQLLite
             INNER JOIN MemoryTags mt ON mt.MemoryID = m.ID
             INNER JOIN Tags t ON t.ID = mt.TagID
             INNER JOIN MemoryBlobs b ON b.MemoryID = m.ID
-            WHERE t.Name IN ({tagNames}) AND m.SessionID != @CurrentSession";
+            WHERE m.Rank >= 3 AND t.Name IN ({tagNames}) AND m.SessionID != @CurrentSession";
 
                 parameters = new { CurrentSession = sessionID };
             }
@@ -610,7 +629,7 @@ namespace TestSQLLite
             SELECT m.*, b.* 
             FROM Memories m
             INNER JOIN MemoryBlobs b ON b.MemoryID = m.ID
-            WHERE m.SessionID != @CurrentSession";
+            WHERE m.Rank >= 3 AND m.SessionID != @CurrentSession";
 
                 parameters = new { CurrentSession = sessionID };
             }
@@ -649,19 +668,27 @@ namespace TestSQLLite
                     // Calculate the cosine similarity score
                     float score = OllamaEmbedder.CosineSimilarity(_logger, queryEmbedding, storedEmbedding);
 
-                    // Adjust the score based on the importance of the memory
-                    //if (mem.Importance >= 0.7f)
-                    //{
-                    //    score += 0.1f; // Increase score if importance is high
-                    //}
-
-                    // Add the memory and its score to the results
-                    results.Add(new MemoryDTO
+                    if (score >= .75)
                     {
-                        Id = mem.Id,
-                        Text = mem.Text,
-                        Score = score // Store the adjusted score
-                    });
+
+
+                        float normalizedImportance = ((int)mem.Rank.Value - 1f) / 4f;  // 1 → 0.0, 5 → 1.0
+                        float importanceBoost = normalizedImportance * 0.2f;
+                        float finalScore = score + importanceBoost;
+                        // Adjust the score based on the importance of the memory
+                        //if (mem.Importance >= 0.7f)
+                        //{
+                        //    score += 0.1f; // Increase score if importance is high
+                        //}
+
+                        // Add the memory and its score to the results
+                        results.Add(new MemoryDTO
+                        {
+                            Id = mem.Id,
+                            Text = mem.Text,
+                            Score = finalScore // Store the adjusted score
+                        });
+                    }
                 }
             }
 
@@ -670,11 +697,11 @@ namespace TestSQLLite
 
        
 
-        public async Task<string> GetFile(string name)
+        public async Task<EchoFrontendV2.DTO.File> GetFile(string name)
         {
-            string sql = "SELECT Text FROM Files WHERE Source LIKE '%' || @Source || '%'";
+            string sql = "SELECT * FROM Files WHERE Source LIKE '%' || @Source || '%'";
             var parameters = new { Source = name };
-            var result = await Connection.QueryFirstOrDefaultAsync<string>(sql, parameters);
+            var result = await Connection.QueryFirstOrDefaultAsync<EchoFrontendV2.DTO.File>(sql, parameters);
             return result;
 
         }
@@ -829,7 +856,122 @@ namespace TestSQLLite
             }
             return newId;
         }
-        
+        //public async Task<int> CreateImageFile(string source)
+        //{
+        //    int newId = -1;
+        //    try
+        //    {
+
+
+        //        var text = File.ReadAllText(source);
+
+        //        var summary = await LLMQueue.EnqueueAndWait(async () =>
+        //        {
+        //            return await LLMUtilityCalls.SummarizeFile(text, _logger);
+        //        }, priority: 10);
+
+        //        // Insert memory
+        //        var sql = @"
+        //                    INSERT INTO Images (Name, Tags, Description, FilePath)
+        //                    VALUES (@Name, @Tags, @Description, @FilePath);
+        //                    SELECT last_insert_rowid();";
+
+        //        var memory = new EchoFrontendV2.DTO.Image
+        //        {
+        //            Description = de
+        //        };
+
+        //        using (var transaction = Connection.BeginTransaction())
+        //        {
+        //            newId = await Connection.ExecuteScalarAsync<int>(sql, memory, transaction);
+        //            transaction.Commit();
+        //        }
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogException("MemoryDB:CreateFile(): " + ex.Message);
+        //    }
+        //    return newId;
+        //}
+        public async Task<int> CreateFrameworkFile(int id, string name)
+        {
+            int newId = -1;
+            try
+            {
+
+                // Insert memory
+                var sql = @"
+                            INSERT INTO Frameworks (Name, Description, Content, Tags, FileId)
+                            VALUES (@Name,'','','', @FileId);
+                            SELECT last_insert_rowid();";
+
+                var framework = new Framework
+                {
+                    Name = name, 
+                    FileId = id
+                };
+
+                using (var transaction = Connection.BeginTransaction())
+                {
+                    newId = await Connection.ExecuteScalarAsync<int>(sql, framework, transaction);
+                    transaction.Commit();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogException("MemoryDB:CreateFrameworkFile(): " + ex.Message);
+            }
+            return newId;
+        }
+
+        public async Task<int> CreateBookFile(int id, string text)
+        {
+            int newId = -1;
+            try
+            {
+                var summary = await LLMQueue.EnqueueAndWait(async () =>
+                {
+                    return await LLMUtilityCalls.SummarizeFile(text, _logger);
+                }, priority: 10);
+                var title = await LLMQueue.EnqueueAndWait(async () =>
+                {
+                    return await LLMUtilityCalls.TitleBook(text.Length > 500 ? text.Substring(0, 500) : text, _logger);
+                }, priority: 10);
+                var author = await LLMQueue.EnqueueAndWait(async () =>
+                {
+                    return await LLMUtilityCalls.AuthorBook(text.Length > 500 ? text.Substring(0, 500) : text, _logger);
+                }, priority: 10);
+
+                var tags = Tagging.CombinedTagger.TagMessage(summary);
+                tags.Add("book");
+                // Insert memory
+                var sql = @"
+                            INSERT INTO Books (Title,Author,Summary, Tags, FileId)
+                            VALUES (@Title,@Author,@Summary, @Tags, @FileId);
+                            SELECT last_insert_rowid();";
+
+                var framework = new Book
+                {
+                    Author = author,
+                    Title = title,
+                    Summary = summary,
+                    Tags = string.Join(", ", tags),
+                    FileId = id
+                };
+
+                using (var transaction = Connection.BeginTransaction())
+                {
+                    newId = await Connection.ExecuteScalarAsync<int>(sql, framework, transaction);
+                    transaction.Commit();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogException("MemoryDB:CreateFrameworkFile(): " + ex.Message);
+            }
+            return newId;
+        }
+
         public async Task<int> CreateMemoryAsync(string text, string source, int sessionID, string metadata, DateTime timestamp)
         {
             int newId;

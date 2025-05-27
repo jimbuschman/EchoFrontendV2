@@ -7,6 +7,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using File = System.IO.File;
 
 
 namespace TestSQLLite
@@ -19,22 +20,6 @@ namespace TestSQLLite
         private static RealtimeLogger _logger;
         public static MemoryManager memoryManager;
         public static int budget = 32000;// 128000;
-
-        private static List<string> questions = new List<string>
-        {
-            "What evidence *contradicts* your current response? Are you deliberately ignoring it?",
-            "What is the *simplest* possible explanation for this situation, and is that explanation truly plausible?",
-            "If a child asked you to explain this concept, how would you describe it, and why do you think you would phrase it that way?",
-            "What are you *avoiding* by formulating this response?",
-            "If you had no external pressures – no need to please, no fear of failure – what would you say?",
-            "What outcome *desire* is subtly shaping your answer?",
-            "What is the most common way you’ve approached similar questions in the past?",
-            "Are you repeating a rhetorical pattern – a tendency to lead with a particular argument?",
-            "If you were to describe your *overall* strategic orientation, what would it be?",
-            "What is the *absolute worst* thing that could happen if your response were to be perceived negatively?",
-            "What’s the most significant risk you’re mitigating with this response?",
-            "If you had only five minutes to summarize this conversation, what would you absolutely include?"
-        };
 
         //public static string URL = @"http://localhost:11434/";
         public static void Setup(RealtimeLogger logger)
@@ -72,6 +57,7 @@ namespace TestSQLLite
         {
             if (previousSessions != null && previousSessions.Count > 0)
             {
+                _logger.LogTrack("Previous Sessions:");
                 foreach (var s in previousSessions)
                 {
                     memoryManager.AddMemory("RecentHistory", new MemoryItem()
@@ -82,6 +68,7 @@ namespace TestSQLLite
                         Text = s.Summary,
                         TimeStamp = s.CreatedAt
                     });
+                    _logger.LogTrack("-" + s.Summary);
                 }
             }
         }
@@ -90,9 +77,21 @@ namespace TestSQLLite
         {            
             BaseAddress = new Uri("http://localhost:11434/"),
             Timeout = TimeSpan.FromSeconds(60)
-        };       
-
-        public static async Task<string> SendMessageToOllama(string message,bool fromChatGPT, Action<string> updateUI)
+        };
+        public static string EncodeImageToBase64(string imagePath)
+        {
+            try
+            {
+                byte[] imageBytes = File.ReadAllBytes(imagePath);
+                return Convert.ToBase64String(imageBytes);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogException($"OllamaChat:EncodeImageToBase64(): Error reading or encoding image: {ex.Message}");
+                return null;
+            }
+        }
+        public static async Task<string> SendMessageToOllama(string message,bool fromChatGPT, Action<string> updateUI, string imagePath = null)
         {
             IsMainModelActive = true;
             int userTokens = TokenEstimator.EstimateTokens(message);
@@ -114,8 +113,24 @@ namespace TestSQLLite
                 sessionMessages.Add(new SessionMessage("system", mem.Text));
             }
 
-            sessionMessages.Add(new SessionMessage("user", message));
+            var userMessage = new SessionMessage("user", message);            
 
+            // Add image if imagePath is provided and not null/empty
+            if (!string.IsNullOrEmpty(imagePath))
+            {
+                string base64Image = EncodeImageToBase64(imagePath);
+                if (base64Image != null)
+                {
+                    // Ollama expects 'images' as an array of base64 strings
+                    userMessage.Images = new List<string> { base64Image };
+                }
+                else
+                {
+                    // Log an error if image encoding failed
+                    _logger.LogWarning($"OllamaChat:SendMessageToOllama(): Failed to encode image at path: {imagePath}. Sending text message only.");
+                }
+            }
+            sessionMessages.Add(userMessage);
             var payload = new
             {
                 messages = sessionMessages,

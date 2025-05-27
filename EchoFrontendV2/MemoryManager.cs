@@ -136,6 +136,8 @@ namespace TestSQLLite
                 if (!string.IsNullOrWhiteSpace(summary))
                 {
                     OllamaChat.memoryManager.AddMemory("RecentHistory", new MemoryItem { Text = summary, EstimatedTokens = TokenEstimator.EstimateTokens(summary), SessionRole = "system", PriorityScore = 1 });
+                    _logger.LogTrack("Summarized Old Session Data:");
+                    _logger.LogTrack("-" + summary);
                 }
             }
 

@@ -57,7 +57,7 @@ namespace TestSQLLite
         public static async Task<string> SummarizeMemory(string text, RealtimeLogger _logger, string llmName = "")
         {
             if (string.IsNullOrWhiteSpace(llmName))
-                llmName = "prithivMLmods/Llama-Chat-Summary-3.2-3B-GGUF";
+                llmName = "hf.co/prithivMLmods/Llama-Chat-Summary-3.2-3B-GGUF:Q4_K_M";
 
             var phrase = $@"
                 Summarize the following memory in 1 concise, factual sentence.
@@ -74,7 +74,31 @@ namespace TestSQLLite
                 File: {text}";
             return await GetLLMResponse(phrase, _logger, llmName);
 
-        }        
+        }
+        public static async Task<string> SummarizeBook(string text, RealtimeLogger _logger, string llmName = "")
+        {
+            var phrase = $@"
+                Please write a 2-3 concise summary of this book.                
+                Book: {text}";
+            return await GetLLMResponse(phrase, _logger, llmName);
+
+        }
+        public static async Task<string> AuthorBook(string text, RealtimeLogger _logger, string llmName = "")
+        {
+            var phrase = $@"
+                 Can you respond with ONLY the author of this book, no other text.                
+                Book: {text}";
+            return await GetLLMResponse(phrase, _logger, llmName);
+
+        }
+        public static async Task<string> TitleBook(string text, RealtimeLogger _logger, string llmName = "")
+        {
+            var phrase = $@"
+                 Can you respond with ONLY the title of this book, no other text.                
+                Book: {text}";
+            return await GetLLMResponse(phrase, _logger, llmName);
+
+        }
 
         public static async Task<string> GetLessionFromConversation(string text, RealtimeLogger _logger, string llmName = "")
         {
@@ -94,7 +118,7 @@ namespace TestSQLLite
         public static async Task<string> SummarizeSessionChunk(string text, RealtimeLogger _logger, string llmName = "")
         {
             if (string.IsNullOrWhiteSpace(llmName))
-                llmName = "prithivMLmods/Llama-Chat-Summary-3.2-3B-GGUF";
+                llmName = "hf.co/prithivMLmods/Llama-Chat-Summary-3.2-3B-GGUF:Q4_K_M";
 
             var phrase = $@"
             Summarize the following conversation in 1–2 concise sentences. 
@@ -107,7 +131,7 @@ namespace TestSQLLite
         public static async Task<string> SummarizeSessionConversation(string text, RealtimeLogger _logger, string llmName = "")
         {
             if (string.IsNullOrWhiteSpace(llmName))
-                llmName = "prithivMLmods/Llama-Chat-Summary-3.2-3B-GGUF";
+                llmName = "hf.co/prithivMLmods/Llama-Chat-Summary-3.2-3B-GGUF:Q4_K_M";
 
             var phrase = $@"
             Summarize the following conversation in 2-3 concise sentences. Focus only on what was discussed, decided, or explored. 
@@ -120,7 +144,7 @@ namespace TestSQLLite
         public static async Task<string> SummarizeSessionConversationSummaries(string text, RealtimeLogger _logger, string llmName = "")
         {
             if (string.IsNullOrWhiteSpace(llmName))
-                llmName = "prithivMLmods/Llama-Chat-Summary-3.2-3B-GGUF";
+                llmName = "hf.co/prithivMLmods/Llama-Chat-Summary-3.2-3B-GGUF:Q4_K_M";
 
             var phrase = $@"
             Please summarize these summaries into 3-5 sentences that reflect the overall conversation. \n\n[" + text + "]";

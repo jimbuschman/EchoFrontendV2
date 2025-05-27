@@ -16,6 +16,7 @@ namespace TestSQLLite
         public string Content { get; set; }
         public DateTime TimeStamp { get; set; }
         public bool Dumped { get; set; } = false; // Flag to indicate if the message has been dumped to memory
+        public List<string> Images { get; set; }
         public SessionMessage(string role, string content, bool isOldMessage = false)
         {
             Role = role;

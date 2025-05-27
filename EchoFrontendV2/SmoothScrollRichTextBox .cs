@@ -80,5 +80,10 @@ namespace EchoFrontendV2
             this.AppendText(text + Environment.NewLine);
             SmoothScrollToBottom();
         }
+        public void AppendAndScrollLog(string text)
+        {          
+            this.AppendText(text + Environment.NewLine);
+            SmoothScrollToBottom();
+        }
     }
 }
