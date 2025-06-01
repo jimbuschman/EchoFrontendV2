@@ -50,6 +50,7 @@ namespace EchoFrontendV2
             btnFrameworkImport = new Button();
             btnBook = new Button();
             btnImage = new Button();
+            btnAddImage = new Button();
             SuspendLayout();
             // 
             // txtUserMessage
@@ -263,11 +264,21 @@ namespace EchoFrontendV2
             btnImage.UseVisualStyleBackColor = true;
             btnImage.Click += btnImage_Click;
             // 
+            // btnAddImage
+            // 
+            btnAddImage.Location = new Point(982, 511);
+            btnAddImage.Name = "btnAddImage";
+            btnAddImage.Size = new Size(75, 23);
+            btnAddImage.TabIndex = 24;
+            btnAddImage.Text = "Add Image";
+            btnAddImage.UseVisualStyleBackColor = true;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(1401, 685);
+            Controls.Add(btnAddImage);
             Controls.Add(btnImage);
             Controls.Add(btnBook);
             Controls.Add(btnFrameworkImport);
@@ -329,5 +340,6 @@ namespace EchoFrontendV2
         private Button btnFrameworkImport;
         private Button btnBook;
         private Button btnImage;
+        private Button btnAddImage;
     }
 }

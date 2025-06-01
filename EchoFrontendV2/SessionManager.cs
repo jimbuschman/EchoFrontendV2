@@ -10,13 +10,22 @@ namespace TestSQLLite
 {
     public class SessionMessage
     {
+
         [JsonPropertyName("role")]
         public string Role { get; set; } // "user", "assistant", "system"
         [JsonPropertyName("content")]
         public string Content { get; set; }
+        [JsonIgnore]
         public DateTime TimeStamp { get; set; }
+        [JsonIgnore]
         public bool Dumped { get; set; } = false; // Flag to indicate if the message has been dumped to memory
+        [JsonIgnore]
         public List<string> Images { get; set; }
+        //[JsonIgnore]
+        //public string ToolCallId { get; set; }
+        [JsonPropertyName("tool_name")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string ToolName { get; set; }
         public SessionMessage(string role, string content, bool isOldMessage = false)
         {
             Role = role;

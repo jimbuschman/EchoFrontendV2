@@ -4,6 +4,7 @@ namespace EchoFrontendV2
 {
     public class OllamaChatGPTIntegration
     {
+        
         public async Task<string> GetChatGPTResponse(string messageToSend)
         {
             string pythonScriptPath = "C:\\Users\\JimBu\\Downloads\\ollamaChatTest.py"; // Replace with the actual path

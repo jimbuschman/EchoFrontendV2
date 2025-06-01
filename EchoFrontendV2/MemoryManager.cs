@@ -89,6 +89,7 @@ namespace TestSQLLite
                 {
                     if (remaining >= entry.EstimatedTokens)
                     {
+                        entry.PoolName =entry.SessionRole == "system2" ? "Lessons" : pool.Name;
                         result.Add(entry);
                         remaining -= entry.EstimatedTokens;
                     }
@@ -163,6 +164,7 @@ namespace TestSQLLite
         public double PriorityScore { get; set; }
         public DateTime TimeStamp { get; set; } = DateTime.UtcNow;
         public string SessionRole { get; set; }
+        public string PoolName { get; set; }
     }
 
     public class MemoryPool

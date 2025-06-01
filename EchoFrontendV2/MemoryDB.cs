@@ -1365,6 +1365,14 @@ namespace TestSQLLite
                );
         }
 
+        public IEnumerable<Framework> GetFrameworkInfo()
+        {
+            return Connection.Query<Framework>("SELECT id,name,description FROM Frameworks");
+        }
+        public string GetFrameworkById(int id)
+        {
+            return Connection.Query<string>("SELECT Content FROM Frameworks where id = " + id).FirstOrDefault();
+        }
         public IEnumerable<Memory> GetAllMemories()
         {
             return Connection.Query<Memory>("SELECT * FROM Memories order by TimeStamp");
