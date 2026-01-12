@@ -51,7 +51,7 @@ namespace EchoFrontendV2
             _logHub.SendLog(message, "info");
         }
 
-        public void LogTrack(string message)
+        public void LogMessage(string message)
         {
             // You could also write to file or database here
             _logHub.SendLog(message, "tracking");

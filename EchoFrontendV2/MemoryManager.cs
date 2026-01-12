@@ -30,7 +30,7 @@ namespace TestSQLLite
 
         public void ConfigurePool(string name, double percentage, int priority, int? hardCap = null)
         {
-            _config[name] = new PoolConfig { Percentage = percentage, HardCap = hardCap, RolloverPriority = priority};
+            _config[name] = new PoolConfig { Percentage = percentage, HardCap = hardCap, RolloverPriority = priority };
         }
 
         public void InitializePools()
@@ -69,7 +69,7 @@ namespace TestSQLLite
         {
             if (_pools.TryGetValue(poolName, out var pool))
             {
-                if(pool.UsedTokens + item.EstimatedTokens > pool.MaxTokenBudget)
+                if (pool.UsedTokens + item.EstimatedTokens > pool.MaxTokenBudget)
                 {
                     TrimPool(poolName);
                 }
@@ -89,7 +89,7 @@ namespace TestSQLLite
                 {
                     if (remaining >= entry.EstimatedTokens)
                     {
-                        entry.PoolName =entry.SessionRole == "system2" ? "Lessons" : pool.Name;
+                        entry.PoolName = entry.SessionRole == "system2" ? "Lessons" : pool.Name;
                         result.Add(entry);
                         remaining -= entry.EstimatedTokens;
                     }
@@ -116,9 +116,9 @@ namespace TestSQLLite
                             catch (Exception ex) { _logger.LogException("MemoryManager:TrimPool(): " + ex.ToString()); }
                         });
                     }
-                    pool.RemoveItems(oldest);                    
+                    pool.RemoveItems(oldest);
                 }
-            }            
+            }
         }
 
         public async Task GetSummary(List<MemoryItem> messages)
@@ -132,24 +132,24 @@ namespace TestSQLLite
             if (!string.IsNullOrWhiteSpace(text))
             {
 
-                summary = await LLMUtilityCalls.SummarizeSessionChunk(text,_logger,text);
+                summary = await LLMUtilityCalls.SummarizeSessionChunk(text, _logger, text);
 
                 if (!string.IsNullOrWhiteSpace(summary))
                 {
                     OllamaChat.memoryManager.AddMemory("RecentHistory", new MemoryItem { Text = summary, EstimatedTokens = TokenEstimator.EstimateTokens(summary), SessionRole = "system", PriorityScore = 1 });
-                    _logger.LogTrack("Summarized Old Session Data:");
-                    _logger.LogTrack("-" + summary);
+                    _logger.LogMessage("Summarized Old Session Data:");
+                    _logger.LogMessage("-" + summary);
                 }
             }
 
-        }           
+        }
 
         public void PrintUsage()
-        {            
+        {
             _logger.LogWarning("=== MEMORY USAGE ===");
             foreach (var pool in _pools.Values)
             {
-                _logger.LogWarning($"{pool.Name,-15}: {pool.UsedTokens} / {pool.MaxTokenBudget} tokens used");                
+                _logger.LogWarning($"{pool.Name,-15}: {pool.UsedTokens} / {pool.MaxTokenBudget} tokens used");
             }
             _logger.LogWarning("=====================");
         }
@@ -184,7 +184,7 @@ namespace TestSQLLite
 
         public void Add(MemoryItem item)
         {
-            if (_items.Any(s=> s.Text == item.Text))
+            if (_items.Any(s => s.Text == item.Text))
                 return;
             _items.Add(item);
             _items.Sort((a, b) => b.PriorityScore.CompareTo(a.PriorityScore));

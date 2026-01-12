@@ -57,7 +57,7 @@ namespace TestSQLLite
         {
             if (previousSessions != null && previousSessions.Count > 0)
             {
-                _logger.LogTrack("Previous Sessions:");
+                _logger.LogMessage("Previous Sessions:");
                 foreach (var s in previousSessions)
                 {
                     memoryManager.AddMemory("RecentHistory", new MemoryItem()
@@ -68,7 +68,7 @@ namespace TestSQLLite
                         Text = s.Summary,
                         TimeStamp = s.CreatedAt
                     });
-                    _logger.LogTrack("-" + s.Summary);
+                    _logger.LogMessage("-" + s.Summary);
                 }
             }
         }
@@ -77,6 +77,34 @@ namespace TestSQLLite
         {
             BaseAddress = new Uri("http://localhost:11434/"),
             Timeout = TimeSpan.FromSeconds(60)
+        };
+        public static List<ToolMetadata> ToolRegistry = new()
+        {
+            new ToolMetadata
+            {
+                Name = "get_current_time",
+                Description = "Returns the current server time.",
+                Arguments = new()
+            },
+            new ToolMetadata
+            {
+                Name = "get_framework_summaries",
+                Description = "Returns a list of framework summaries.",
+                Arguments = new()
+                {
+                    { "filter", ("string", "Filter by name or keyword (optional)", false) },
+                    { "limit", ("int", "Max number of results (optional)", false) }
+                }
+            },
+            new ToolMetadata
+            {
+                Name = "get_full_framework",
+                Description = "Returns the full text of a specific framework.",
+                Arguments = new()
+                {
+                    { "id", ("int", "The framework ID (required)", true) }
+                }
+            }
         };
         public static string EncodeImageToBase64(string imagePath)
         {
@@ -128,7 +156,7 @@ namespace TestSQLLite
                             f.Description
                         }).ToList());
                         return json;
-                    case "get_full_framework(id: int)":
+                    case "get_full_framework":// (id: int)":
                         var data = Form1.Database.GetFrameworkById((int)tool.Arguments["id"]);
                         return data;
                     default:
@@ -148,7 +176,7 @@ namespace TestSQLLite
 
             // Step 1: Gather all context for injection
             var memoryContext = memoryManager.GatherMemory(tokenBudget: availableForMemory);
-            _logger.LogTrack("available tokens: " + availableForMemory);
+            _logger.LogMessage("available tokens: " + availableForMemory);
 
             // Step 2: Build the full message list
             var sessionMessages = new List<SessionMessage>();
@@ -241,7 +269,7 @@ namespace TestSQLLite
 
             return mems.ToString();// JsonSerializer.Serialize(sessionMessages, new JsonSerializerOptions { WriteIndented = true });
         }
-        public static async Task<string> SendMessageToOllama(string message, string toolResponse, bool fromChatGPT, Action<string> updateUI, string imagePath = null)
+        public static async Task<string> SendMessageToOllama2(string message, string toolResponse, bool fromChatGPT, Action<string> updateUI, string imagePath = null)
         {
             IsMainModelActive = true;
             int userTokens = TokenEstimator.EstimateTokens(message);
@@ -250,7 +278,7 @@ namespace TestSQLLite
 
             // Step 1: Gather all context for injection
             var memoryContext = memoryManager.GatherMemory(tokenBudget: availableForMemory);
-            _logger.LogTrack("available tokens: " + availableForMemory);
+            _logger.LogMessage("available tokens: " + availableForMemory);
 
             // Step 2: Build the full message list
             var sessionMessages = new List<SessionMessage>();
@@ -352,7 +380,7 @@ namespace TestSQLLite
                 }
             };
             var payloadJson = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
-            _logger.LogTrack($"🟨 Payload to Ollama:\n{payloadJson}");
+            _logger.LogMessage($"🟨 Payload to Ollama:\n{payloadJson}");
             using var content = new StringContent(
                 JsonSerializer.Serialize(payload),
                 Encoding.UTF8,
@@ -428,7 +456,7 @@ namespace TestSQLLite
                                             var rawJson = codeBlockBuilder.ToString().Trim();
                                             if (rawJson.StartsWith("json", StringComparison.OrdinalIgnoreCase))
                                                 rawJson = rawJson.Substring(4).TrimStart();
-                                            _logger.LogTrack($"[Parsed Code Block]:\n{rawJson}");
+                                            _logger.LogMessage($"[Parsed Code Block]:\n{rawJson}");
 
                                             if (rawJson.Contains("tool_call"))
                                             {
@@ -466,7 +494,7 @@ namespace TestSQLLite
 
                                                         var toolCall = new ToolCall { Name = toolName, Arguments = args };
                                                         var result = HandleToolCall(toolCall);
-                                                        _logger.LogTrack($"✅ Parsed tool_call: {toolCall.Name}");
+                                                        _logger.LogMessage($"✅ Parsed tool_call: {toolCall.Name}");
                                                         var output = new ToolOutput
                                                         {
                                                             Payload = new ToolOutputPayload
@@ -540,6 +568,350 @@ namespace TestSQLLite
             {
                 IsMainModelActive = false;
             }
+        }
+
+        // Helper: Read LLM stream and accumulate output
+        private static async Task<string> ReadllmStream(
+            Stream stream,
+            byte[] buffer,
+            StringBuilder partialLine,
+            Action<string> updateUI,
+            StringBuilder fullResponse)
+        {
+            while (true)
+            {
+                var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+                if (bytesRead == 0) break;
+                var chunk = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                var lines = chunk.Split('\n');
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    var line = lines[i];
+                    if (i == 0 && partialLine.Length > 0)
+                    {
+                        line = partialLine.ToString() + line;
+                        partialLine.Clear();
+                    }
+                    if (i == lines.Length - 1 && !chunk.EndsWith('\n'))
+                    {
+                        partialLine.Append(line);
+                        continue;
+                    }
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(line);
+                        if (doc.RootElement.TryGetProperty("message", out var messageProp) &&
+                            messageProp.TryGetProperty("content", out var contentProp))
+                        {
+                            var textChunk = contentProp.GetString();
+                            if (!string.IsNullOrEmpty(textChunk))
+                            {
+                                fullResponse.Append(textChunk);
+                                updateUI(textChunk);
+                                return textChunk;
+                            }
+                        }
+                    }
+                    catch (JsonException)
+                    {
+                        continue;
+                    }
+                }
+            }
+            return fullResponse.ToString();
+        }
+
+        // Helper: Try to parse a tool call from LLM output
+        private static bool TryParseToolCall(string output, out ToolCall toolCall)
+        {
+            toolCall = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(output);
+                if (doc.RootElement.TryGetProperty("tool_call", out var toolCallProp))
+                {
+                    var toolName = toolCallProp.GetProperty("tool_name").GetString();
+                    var args = new Dictionary<string, object>();
+                    if (toolCallProp.TryGetProperty("arguments", out var tempargs) && tempargs.ValueKind == JsonValueKind.Object)
+                    {
+                        foreach (var p in tempargs.EnumerateObject())
+                            args[p.Name] = JsonSerializer.Deserialize<object>(p.Value.GetRawText());
+                    }
+                    toolCall = new ToolCall { Name = toolName, Arguments = args };
+                    return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+        public static string GenerateToolPrompt()
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("You can use the following tools by responding with a JSON object as shown.");
+            foreach (var tool in ToolRegistry)
+            {
+                sb.AppendLine($"- {tool.Name}");
+                sb.AppendLine($"  - Description: {tool.Description}");
+                if (tool.Arguments.Any())
+                {
+                    sb.AppendLine("  - Arguments:");
+                    foreach (var arg in tool.Arguments)
+                        sb.AppendLine($"      - {arg.Key} ({arg.Value.Type}){(arg.Value.Required ? " [required]" : "")}: {arg.Value.Description}");
+                }
+                else
+                {
+                    sb.AppendLine("  - Arguments: none");
+                }
+                sb.AppendLine();
+            }
+            sb.AppendLine("Example tool call:");
+            sb.AppendLine("{ \"tool_call\": { \"tool_name\": \"get_full_framework\", \"arguments\": { \"id\": 42 } } }");
+            sb.AppendLine("If you need to use a tool, respond ONLY with the JSON object. If not, respond normally.");
+            return sb.ToString();
+        }
+
+        public static async Task<string> SendMessageToOllama(
+            string message,
+            string toolResponse,
+            bool fromChatGPT,
+            Action<string> updateUI,
+            string imagePath = null)
+        {
+            IsMainModelActive = true;
+            try
+            {
+                int userTokens = TokenEstimator.EstimateTokens(message);
+                int maxContext = budget;
+                int availableForMemory = maxContext - userTokens - MemoryManager.OVERHEAD_TOKENS;
+
+                // Gather context
+                var memoryContext = memoryManager.GatherMemory(tokenBudget: availableForMemory);
+
+                // Build dynamic system prompt
+                var systemPrompt = GenerateToolPrompt();
+
+                // Build message list
+                var sessionMessages = new List<SessionMessage>
+                {
+                    new SessionMessage("system", systemPrompt)
+                };
+
+                // Add memory context
+                var mems = new StringBuilder();
+                foreach (var mem in memoryContext)
+                    mems.AppendLine($"[{mem.PoolName}] {mem.Text}");
+                sessionMessages.Add(new SessionMessage("system", mems.ToString()));
+
+                // Add user message
+                var userMessage = new SessionMessage("user", message);
+                if (!string.IsNullOrEmpty(imagePath))
+                {
+                    string base64Image = EncodeImageToBase64(imagePath);
+                    if (base64Image != null)
+                        userMessage.Images = new List<string> { base64Image };
+                }
+                sessionMessages.Add(userMessage);
+
+                // Add tool response if present
+                if (!string.IsNullOrWhiteSpace(toolResponse))
+                    sessionMessages.Add(new SessionMessage("assistant", toolResponse));
+
+                // Prepare payload
+                var payload = new
+                {
+                    messages = sessionMessages,
+                    model = "gemma3:latest",
+                    stream = true,
+                    options = new { num_ctx = 32768, num_gpu = 1 }
+                };
+
+                using var content = new StringContent(
+                    JsonSerializer.Serialize(payload),
+                    Encoding.UTF8,
+                    "application/json");
+
+                var request = new HttpRequestMessage(HttpMethod.Post, "api/chat") { Content = content };
+                request.Headers.ConnectionClose = true;
+
+                using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+                response.EnsureSuccessStatusCode();
+
+                var stream = await response.Content.ReadAsStreamAsync();
+                var buffer = new byte[8192];
+                var fullResponse = new StringBuilder();
+                var partialLine = new StringBuilder();
+
+                // Tool call loop: keep processing tool calls until LLM stops requesting them
+                while (true)
+                {
+                    string llmOutput = await ReadllmStream(stream, buffer, partialLine, updateUI, fullResponse);
+
+                    // Try to detect one or more tool calls in the output
+                    if (TryParseToolCalls(llmOutput, out List<ToolCall> toolCalls) && toolCalls.Count > 0)
+                    {
+                        foreach (var toolCall in toolCalls)
+                        {
+                            var (isValid, error) = ValidateToolCall(toolCall);
+                            if (!isValid)
+                            {
+                                // Inject error feedback and let LLM retry
+                                var errorMsg = $"Tool call error: {error}. Please check your tool call JSON and try again.";
+                                _logger.LogWarning(errorMsg);
+                                sessionMessages.Add(new SessionMessage("system", errorMsg));
+                                break; // Only process one error at a time
+                            }
+                            // Notify UI about tool execution
+                            updateUI($"[Executing tool: {toolCall.Name}]");
+
+                            // Execute tool and inject result
+                            string toolResult = HandleToolCall(toolCall);
+                            _logger.LogMessage($"Tool call: {toolCall.Name} | Args: {JsonSerializer.Serialize(toolCall.Arguments)} | Result: {toolResult}");
+                            var toolOutput = new ToolOutput
+                            {
+                                Payload = new ToolOutputPayload
+                                {
+                                    Name = toolCall.Name,
+                                    Result = toolResult
+                                }
+                            };
+                            string toolJson = JsonSerializer.Serialize(toolOutput);
+
+                            // Add tool output as assistant message
+                            sessionMessages.Add(new SessionMessage("tool_output", toolJson));
+                        }
+
+                        // Rebuild payload and resend
+                        payload = new
+                        {
+                            messages = sessionMessages,
+                            model = "gemma3:latest",
+                            stream = true,
+                            options = new { num_ctx = 32768, num_gpu = 1 }
+                        };
+                        using var newContent = new StringContent(
+                            JsonSerializer.Serialize(payload),
+                            Encoding.UTF8,
+                            "application/json");
+                        request.Content = newContent;
+                        using var newResponse = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+                        newResponse.EnsureSuccessStatusCode();
+                        stream = await newResponse.Content.ReadAsStreamAsync();
+                        continue;
+                    }
+                    else
+                    {
+                        // Proactive tool suggestion: If the LLM's response is vague, suggest tool use
+                        if (IsVagueOrIncomplete(llmOutput))
+                        {
+                            var suggestion = "If you need more information, consider using one of the available tools by responding with a tool_call JSON as described above.";
+                            _logger.LogMessage("Proactive tool suggestion injected.");
+                            sessionMessages.Add(new SessionMessage("system", suggestion));
+                            payload = new
+                            {
+                                messages = sessionMessages,
+                                model = "gemma3:latest",
+                                stream = true,
+                                options = new { num_ctx = 32768, num_gpu = 1 }
+                            };
+                            using var suggestionContent = new StringContent(
+                                JsonSerializer.Serialize(payload),
+                                Encoding.UTF8,
+                                "application/json");
+                            request.Content = suggestionContent;
+                            using var suggestionResponse = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+                            suggestionResponse.EnsureSuccessStatusCode();
+                            stream = await suggestionResponse.Content.ReadAsStreamAsync();
+                            continue;
+                        }
+
+                        // No tool call detected, return final response
+                        return fullResponse.ToString();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogException($"OllamaChat:SendMessageToOllama(): Error: {ex.Message}");
+                return "An error occurred while processing your request.";
+            }
+            finally
+            {
+                IsMainModelActive = false;
+            }
+        }
+
+        // Helper: Detect if the LLM's output is vague or incomplete (simple heuristic)
+        private static bool IsVagueOrIncomplete(string output)
+        {
+            if (string.IsNullOrWhiteSpace(output)) return true;
+            string[] vaguePhrases = new[]
+            {
+                "I'm not sure", "I don't know", "cannot answer", "need more information", "unsure", "unknown", "no data", "not enough information"
+            };
+            foreach (var phrase in vaguePhrases)
+                if (output.IndexOf(phrase, StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            // Optionally: check for very short responses
+            if (output.Trim().Length < 20) return true;
+            return false;
+        }
+        public static (bool IsValid, string Error) ValidateToolCall(ToolCall call)
+        {
+            var tool = ToolRegistry.FirstOrDefault(t => t.Name == call.Name);
+            if (tool == null)
+                return (false, $"Unknown tool: {call.Name}");
+
+            foreach (var arg in tool.Arguments)
+            {
+                if (arg.Value.Required && (!call.Arguments?.ContainsKey(arg.Key) ?? true))
+                    return (false, $"Missing required argument: {arg.Key}");
+                // Optionally: type checking
+            }
+            return (true, null);
+        }
+        private static bool TryParseToolCalls(string output, out List<ToolCall> toolCalls)
+        {
+            toolCalls = new();
+            try
+            {
+                using var doc = JsonDocument.Parse(output);
+                if (doc.RootElement.TryGetProperty("tool_call", out var toolCallProp))
+                {
+                    if (toolCallProp.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var item in toolCallProp.EnumerateArray())
+                        {
+                            var call = ParseToolCall(item);
+                            if (call != null) toolCalls.Add(call);
+                        }
+                    }
+                    else
+                    {
+                        var call = ParseToolCall(toolCallProp);
+                        if (call != null) toolCalls.Add(call);
+                    }
+                    return toolCalls.Any();
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        private static ToolCall ParseToolCall(JsonElement element)
+        {
+            try
+            {
+                var toolName = element.GetProperty("tool_name").GetString();
+                var args = new Dictionary<string, object>();
+                if (element.TryGetProperty("arguments", out var tempargs) && tempargs.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var p in tempargs.EnumerateObject())
+                        args[p.Name] = JsonSerializer.Deserialize<object>(p.Value.GetRawText());
+                }
+                return new ToolCall { Name = toolName, Arguments = args };
+            }
+            catch { return null; }
         }
 
     }

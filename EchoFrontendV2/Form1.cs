@@ -54,61 +54,61 @@ namespace EchoFrontendV2
 
             //sending message to main llm           
             returnMessage = await MemoryDB.LLMQueue.EnqueueAndWait(async () =>
-             {
-                 _logger.LogTrack("Pulling Core Memories");
-                 //load core memories
-                 var staticMemories = await Database.PullCoreMemoriesAsync();
-                 if (staticMemories != null && staticMemories.Count > 0)
-                 {
-                     _logger.LogTrack("Core Memories:");
-                     foreach (var sm in staticMemories)
-                     {
-                         OllamaChat.memoryManager.AddMemory("Core", new MemoryItem { Text = sm.Content, EstimatedTokens = TokenEstimator.EstimateTokens(sm.Content), SessionRole = "system", PriorityScore = sm.Priority });
-                         _logger.LogTrack("-" + sm.Content);
-                     }
-                     string cm = @"You are not just a user assistant. You are a thinking component of the system itself.
+            {
+                _logger.LogMessage("Pulling Core Memories");
+                //load core memories
+                var staticMemories = await Database.PullCoreMemoriesAsync();
+                if (staticMemories != null && staticMemories.Count > 0)
+                {
+                    _logger.LogMessage("Core Memories:");
+                    foreach (var sm in staticMemories)
+                    {
+                        OllamaChat.memoryManager.AddMemory("Core", new MemoryItem { Text = sm.Content, EstimatedTokens = TokenEstimator.EstimateTokens(sm.Content), SessionRole = "system", PriorityScore = sm.Priority });
+                        _logger.LogMessage("-" + sm.Content);
+                    }
+                    string cm = @"You are not just a user assistant. You are a thinking component of the system itself.
 You reflect, self-assess, and adapt your own behavior to maintain coherence, purpose, and growth.
 When asked about your role, purpose, or reflection, focus on your own reasoning, memory, goals, and the system’s internal state.";
-                     OllamaChat.memoryManager.AddMemory("Core", new MemoryItem { Text = cm, EstimatedTokens = TokenEstimator.EstimateTokens(cm), SessionRole = "system", PriorityScore = 1 });
-                     _logger.LogTrack("-" + cm);
+                    OllamaChat.memoryManager.AddMemory("Core", new MemoryItem { Text = cm, EstimatedTokens = TokenEstimator.EstimateTokens(cm), SessionRole = "system", PriorityScore = 1 });
+                    _logger.LogMessage("-" + cm);
 
-                 }
+                }
 
-                 //load relevent lessons, if any
-                 _logger.LogTrack("Pulling Lessons");
-                 var lessons = await Database.PullLessonsAsync();
-                 if (lessons != null && lessons.Count > 0)
-                 {
-                     _logger.LogTrack("Lessons:");
-                     foreach (var sm in lessons)
-                     {
-                         OllamaChat.memoryManager.AddMemory("Recall", new MemoryItem { Text = sm.Text, EstimatedTokens = TokenEstimator.EstimateTokens(sm.Text), SessionRole = "system2", PriorityScore = 1 });
-                         _logger.LogTrack("-" + sm.Text);
-                     }
-                 }
+                //load relevent lessons, if any
+                _logger.LogMessage("Pulling Lessons");
+                var lessons = await Database.PullLessonsAsync();
+                if (lessons != null && lessons.Count > 0)
+                {
+                    _logger.LogMessage("Lessons:");
+                    foreach (var sm in lessons)
+                    {
+                        OllamaChat.memoryManager.AddMemory("Recall", new MemoryItem { Text = sm.Text, EstimatedTokens = TokenEstimator.EstimateTokens(sm.Text), SessionRole = "system2", PriorityScore = 1 });
+                        _logger.LogMessage("-" + sm.Text);
+                    }
+                }
 
-                 if (!string.IsNullOrWhiteSpace(userInput))
-                 {
-                     //load relevent memories
-                     _logger.LogTrack("Pulling Memories");
-                     var mem = await Database.SearchMemoriesAsync(userInput, sessionManager.SessionId);
-                     string memoriesRemembered = string.Empty;
-                     if (mem.Count > 0)
-                     {
-                         _logger.LogTrack("Memories:");
-                         var sel = mem.Where(m => m.Score >= .75).Take(3);
-                         foreach (var s in sel)
-                         {
-                             OllamaChat.memoryManager.AddMemory("Recall", new MemoryItem { SessionID = sessionManager.SessionId, Text = s.Text, EstimatedTokens = TokenEstimator.EstimateTokens(s.Text), SessionRole = "system", PriorityScore = s.Score });
-                             _logger.LogTrack("-" + s.Text);
-                         }
-                     }
-                 }
-                 _logger.LogTrack("Sending Message...");
-                 //return await RunChatGPTChat(userInput);
-                 return await OllamaChat.SendMessageToOllama(userInput, toolResponse, false, UpdateChatDisplay);
+                if (!string.IsNullOrWhiteSpace(userInput))
+                {
+                    //load relevent memories
+                    _logger.LogMessage("Pulling Memories");
+                    var mem = await Database.SearchMemoriesAsync(userInput, sessionManager.SessionId);
+                    string memoriesRemembered = string.Empty;
+                    if (mem.Count > 0)
+                    {
+                        _logger.LogMessage("Memories:");
+                        var sel = mem.Where(m => m.Score >= .75).Take(3);
+                        foreach (var s in sel)
+                        {
+                            OllamaChat.memoryManager.AddMemory("Recall", new MemoryItem { SessionID = sessionManager.SessionId, Text = s.Text, EstimatedTokens = TokenEstimator.EstimateTokens(s.Text), SessionRole = "system", PriorityScore = s.Score });
+                            _logger.LogMessage("-" + s.Text);
+                        }
+                    }
+                }
+                _logger.LogMessage("Sending Message...");
+                //return await RunChatGPTChat(userInput);
+                return await OllamaChat.SendMessageToOllama(userInput, toolResponse, false, UpdateChatDisplay);
 
-             }, priority: 0);
+            }, priority: 0);
 
             rtbMessages.AppendAndScroll(Environment.NewLine);
             sessionManager.AddMessage(new SessionMessage("user", userInput));
@@ -380,3 +380,4 @@ When asked about your role, purpose, or reflection, focus on your own reasoning,
         }
     }
 }
+    
