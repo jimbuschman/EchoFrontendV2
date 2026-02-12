@@ -269,50 +269,48 @@ class Agent:
                 endpoint.start_request()
 
             try:
-                if self.config.agent.stream and on_token and iteration == max_iterations:
-                    # Final iteration: stream the response
-                    full_response = await self._stream_response(
-                        client, messages, model, tools if iteration == 0 else None, on_token
-                    )
+                # Non-streaming call with tools to check for tool calls
+                response = await client.chat(
+                    messages=messages,
+                    model=model,
+                    tools=tools,
+                )
+
+                msg = response.get("message", {})
+                content = msg.get("content", "")
+                tool_calls = msg.get("tool_calls", None)
+
+                if tool_calls and iteration < max_iterations:
+                    # Process tool calls
+                    messages.append({"role": "assistant", "content": content, "tool_calls": tool_calls})
+
+                    for tc in tool_calls:
+                        fn = tc.get("function", {})
+                        tool_call = ToolCall(
+                            name=fn.get("name", ""),
+                            arguments=fn.get("arguments", {}),
+                        )
+
+                        if on_token:
+                            on_token(f"\n[Tool: {tool_call.name}]\n")
+
+                        result = await self.tool_registry.execute_tool_call(tool_call)
+                        messages.append(result.to_ollama_message())
+
+                        if on_token:
+                            on_token(f"[Result: {result.result[:200]}]\n\n")
+
+                    continue  # Loop back for LLM to process tool results
                 else:
-                    # Non-streaming for tool call handling
-                    response = await client.chat(
-                        messages=messages,
-                        model=model,
-                        tools=tools,
-                    )
-
-                    msg = response.get("message", {})
-                    content = msg.get("content", "")
-                    tool_calls = msg.get("tool_calls", None)
-
-                    if tool_calls and iteration < max_iterations:
-                        # Process tool calls
-                        messages.append({"role": "assistant", "content": content, "tool_calls": tool_calls})
-
-                        for tc in tool_calls:
-                            fn = tc.get("function", {})
-                            tool_call = ToolCall(
-                                name=fn.get("name", ""),
-                                arguments=fn.get("arguments", {}),
-                            )
-
-                            if on_token:
-                                on_token(f"\n[Tool: {tool_call.name}]\n")
-
-                            result = await self.tool_registry.execute_tool_call(tool_call)
-                            messages.append(result.to_ollama_message())
-
-                            if on_token:
-                                on_token(f"[Result: {result.result[:200]}]\n\n")
-
-                        continue  # Loop back for LLM to process tool results
+                    # No tool calls or max iterations — stream the final response
+                    if self.config.agent.stream and on_token:
+                        # Re-send as streaming for token-by-token output
+                        full_response = await self._stream_response(
+                            client, messages, model, None, on_token
+                        )
                     else:
-                        # No tool calls or max iterations reached
-                        if self.config.agent.stream and on_token and content:
-                            on_token(content)
                         full_response = content
-                        break
+                    break
 
                 if endpoint:
                     endpoint.record_success(0)
